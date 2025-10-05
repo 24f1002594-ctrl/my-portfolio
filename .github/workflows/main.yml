@@ -1,65 +1,37 @@
-name: CI with Dependency Caching
+steps:
+  - name: Checkout code
+    uses: actions/checkout@v4
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+  - name: Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.x'
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  # 1. Cache dependencies using the specified key
+  - name: Cache Pip Dependencies
+    id: cache
+    uses: actions/cache@v4
+    with:
+      # The path to cache (pip's cache directory)
+      path: ~/.cache/pip
+      # The required cache key for the priming run
+      key: cache-50c6902
 
-      # ----------------------------------------------------------------------------------
-      # Cache Setup for Node.js Dependencies (Example)
-      # ----------------------------------------------------------------------------------
-      # Replace this setup with the specific dependencies and paths for your project 
-      # (e.g., Python's pip, Java's Maven/Gradle, etc.)
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+  # 2. Install dependencies (this will use the cache if it hits, or install/prime it if it misses)
+  # NOTE: A dummy 'requirements.txt' must exist in your repo for this step to succeed.
+  - name: Install Dependencies
+    run: |
+      # Create a dummy requirements file if it doesn't exist, just for the first run test
+      if [ ! -f requirements.txt ]; then echo "requests==2.31.0" > requirements.txt; fi
+      pip install -r requirements.txt
 
-      - name: Get npm cache directory path
-        id: npm-cache-dir
-        run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
-
-      - name: Cache Node.js dependencies
-        uses: actions/cache@v4
-        id: cache-npm
-        with:
-          # The key specified in the prompt
-          key: cache-50c6902-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          # Path to cache (npm modules in this case)
-          path: ${{ steps.npm-cache-dir.outputs.dir }}
-          restore-keys: |
-            cache-50c6902-${{ runner.os }}-
-
-      # ----------------------------------------------------------------------------------
-      # Cache Status Reporting Step
-      # ----------------------------------------------------------------------------------
-      - name: prime-cache-50c6902
-        run: |
-          if [ "${{ steps.cache-npm.outputs.cache-hit }}" == "true" ]; then
-            echo "✅ Cache hit for key cache-e9cc92c. Dependencies restored."
-          else
-            echo "❌ Cache miss for key cache-e9cc92c. Dependencies will be installed and cached."
-          fi
-      
-      # ----------------------------------------------------------------------------------
-      # Install Dependencies (where the cache is used/saved)
-      # ----------------------------------------------------------------------------------
-      - name: Install dependencies
-        # This is where the workflow uses the restored dependencies on a hit 
-        # or installs them on a miss (and saves them at the end of the job).
-        run: npm ci
-
-      # Add subsequent build/test steps here...
-      # - name: Run tests
-      #   run: npm test
+  # 3. Echo the cache hit/miss result using the required step name
+  - name: prime-cache-50c6902
+    run: |
+      # steps.cache.outputs.cache-hit is 'true' or an empty string
+      if [ "${{ steps.cache.outputs.cache-hit }}" == "true" ]; then
+        echo "Cache Status: HIT 🎉"
+      else
+        echo "Cache Status: MISS (Cache will be primed on success) 💾"
+      fi
+      echo "Cache hit result: ${{ steps.cache.outputs.cache-hit }}"
